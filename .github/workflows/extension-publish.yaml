@@ -23,7 +23,6 @@ jobs:
         with:
           distribution: temurin
           java-version: 11
-          cache: gradle
       - name: Build ffmpeg
         run: ./build.sh
       - name: Force specific version of cmake to build extension
