@@ -11,30 +11,41 @@ jobs:
   build:
     runs-on: ubuntu-latest
     environment: release
-    if: ${{ startsWith(github.ref, 'refs/tags/v') || github.repository == 'honghong2011/jellyfin-androidx-media-mp2' }}
+    # 【修改1】放宽执行条件：你自己的仓库推master也会触发构建，原条件仅原作者仓库/打标签才会执行
+    if: ${{ !startsWith(github.ref, 'refs/pull/') }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
+          
+      # 【修改2】升级setup-java到v4，解决Node.js 20弃用警告，和checkout版本配套，兼容性拉满
       - name: Setup Java
-        uses: actions/setup-java@v2
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 11
+          
       - name: Build ffmpeg
         run: ./build.sh
+        
       - name: Force specific version of cmake to build extension
         run: |
           cmake=(${ANDROID_SDK_ROOT}/cmake/3.10.2*)
           echo cmake.dir="${cmake[0]}" | tee -a local.properties
+          
       - name: Set JELLYFIN_VERSION
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: echo "JELLYFIN_VERSION=$(echo ${GITHUB_REF#refs/tags/v} | tr / -)" >> $GITHUB_ENV
-      - name: Build extension and publish library
-        run: ./gradlew :exoplayer-ffmpeg-extension:publish closeAndReleaseSonatypeStagingRepository
-        env:
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
-          OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+        
+      # 【修改3】替换掉会报错的发布步骤：只编译不发布，不需要任何密钥，绝对不会报凭证错误
+      - name: Build extension only (no publish)
+        run: ./gradlew :exoplayer-ffmpeg-extension:assembleRelease
+        
+      # 【修改4】新增AAR上传步骤：构建完成后自动打包文件，页面直接出现下载按钮
+      - name: Upload compiled AAR package
+        uses: actions/upload-artifact@v4
+        with:
+          name: exoplayer-ffmpeg-extension-aar
+          path: exoplayer-ffmpeg-extension/build/outputs/aar/*.aar
