@@ -11,48 +11,55 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     environment: release
-    # 【修改1】放宽执行条件：你自己的仓库推master也会触发构建，原条件仅原作者仓库/打标签才会执行
     if: ${{ !startsWith(github.ref, 'refs/pull/') }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0
-          
-      # 【修改2】升级setup-java到v4，解决Node.js 20弃用警告，和checkout版本配套，兼容性拉满
+          fetch-depth: 1
+
+      # 【修复1】强制更新子模块，确保 ExoPlayer/ 目录有内容
+      - name: Update submodules
+        run: |
+          git submodule update --init --recursive --force
+          ls -la ExoPlayer/ || echo "WARNING: ExoPlayer directory missing!"
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 11
-          
+
+      # 【修复2】用 sdkmanager 安装 NDK 21 + CMake 3.10.2
+      - name: Setup Android SDK
+        run: |
+          export ANDROID_SDK_ROOT=$HOME/android-sdk
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+          cd $ANDROID_SDK_ROOT/cmdline-tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-8512546_latest.zip
+          unzip -q commandlinetools-linux-8512546_latest.zip
+          mv cmdline-tools latest
+          export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "ndk;21.4.7075529" "cmake;3.10.2.4988404"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+
       - name: Build ffmpeg
         run: ./build.sh
-        
-      # 【修改5】新增：安装CMake 3.10.2，解决GitHub Actions环境缺少该版本的问题
-      - name: Install CMake 3.10.2
-        run: |
-          mkdir -p ${ANDROID_SDK_ROOT}/cmake/3.10.2
-          cd ${ANDROID_SDK_ROOT}/cmake/3.10.2
-          wget -q https://cmake.org/files/v3.10/cmake-3.10.2-Linux-x86_64.tar.gz
-          tar -xzf cmake-3.10.2-Linux-x86_64.tar.gz --strip-components=1
-          rm cmake-3.10.2-Linux-x86_64.tar.gz
-          
-      - name: Force specific version of cmake to build extension
+
+      - name: Force specific version of cmake
         run: |
           cmake=(${ANDROID_SDK_ROOT}/cmake/3.10.2*)
           echo cmake.dir="${cmake[0]}" | tee -a local.properties
-          
+
       - name: Set JELLYFIN_VERSION
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: echo "JELLYFIN_VERSION=$(echo ${GITHUB_REF#refs/tags/v} | tr / -)" >> $GITHUB_ENV
-        
-      # 【修改3】替换掉会报错的发布步骤：只编译不发布，不需要任何密钥，绝对不会报凭证错误
+
       - name: Build extension only (no publish)
         run: ./gradlew :exoplayer-ffmpeg-extension:assembleRelease
-        
-      # 【修改4】新增AAR上传步骤：构建完成后自动打包文件，页面直接出现下载按钮
+
       - name: Upload compiled AAR package
         uses: actions/upload-artifact@v4
         with:
