@@ -30,6 +30,15 @@ jobs:
       - name: Build ffmpeg
         run: ./build.sh
         
+      # 【修改5】新增：安装CMake 3.10.2，解决GitHub Actions环境缺少该版本的问题
+      - name: Install CMake 3.10.2
+        run: |
+          mkdir -p ${ANDROID_SDK_ROOT}/cmake/3.10.2
+          cd ${ANDROID_SDK_ROOT}/cmake/3.10.2
+          wget -q https://cmake.org/files/v3.10/cmake-3.10.2-Linux-x86_64.tar.gz
+          tar -xzf cmake-3.10.2-Linux-x86_64.tar.gz --strip-components=1
+          rm cmake-3.10.2-Linux-x86_64.tar.gz
+          
       - name: Force specific version of cmake to build extension
         run: |
           cmake=(${ANDROID_SDK_ROOT}/cmake/3.10.2*)
