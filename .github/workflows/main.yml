@@ -1,0 +1,5 @@
+- name: Check ExoPlayer submodule
+  run: |
+    ls -la ExoPlayer/
+    ls -la ExoPlayer/core_settings.gradle 2>/dev/null || echo "core_settings.gradle MISSING!"
+    cat .gitmodules
