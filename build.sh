@@ -1,25 +1,64 @@
-#!/bin/bash
+name: ExoPlayer FFmpeg Extension Publish
 
-# Search NDK path
-CANDIDATES=("$ANDROID_NDK_ROOT" "$ANDROID_NDK_HOME" "$NDK_ROOT" "$NDK")
+on:
+  push:
+    tags:
+      - v*
+    branches:
+      - master
 
-for candidate in ${CANDIDATES[@]}; do
-    [[ -n "$candidate" && -d "$candidate" ]] && export ANDROID_NDK_ROOT="$candidate" && break
-done
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    environment: release
+    if: ${{ !startsWith(github.ref, 'refs/pull/') }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
 
-[[ -z "$ANDROID_NDK_ROOT" ]] && echo "No NDK found, quitting…" && exit 1
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 11
 
-echo "Found NDK at $ANDROID_NDK_ROOT"
+      # 【修复】安装 NDK 21 + CMake 3.10.2，并设置完整环境变量
+      - name: Setup Android SDK
+        run: |
+          export ANDROID_SDK_ROOT=$HOME/android-sdk
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+          cd $ANDROID_SDK_ROOT/cmdline-tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-8512546_latest.zip
+          unzip -q commandlinetools-linux-8512546_latest.zip
+          mv cmdline-tools latest
+          export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "ndk;21.4.7075529" "cmake;3.10.2.4988404"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/21.4.7075529" >> $GITHUB_ENV
 
-# Setup environment
-export EXOPLAYER_ROOT="${PWD}/ExoPlayer"
-export FFMPEG_EXT_PATH="${EXOPLAYER_ROOT}/extensions/ffmpeg/src/main"
-export FFMPEG_PATH="${PWD}/ffmpeg"
-export ENABLED_DECODERS=(mp2 mp3 alac pcm_mulaw pcm_alaw aac ac3 eac3 dca mlp truehd)
+      - name: Build ffmpeg
+        run: ./build.sh
 
-# Create softlink to ffmpeg
-ln -sf "${FFMPEG_PATH}" "${FFMPEG_EXT_PATH}/jni/ffmpeg"
+      - name: Force specific version of cmake
+        run: |
+          cmake=(${ANDROID_SDK_ROOT}/cmake/3.10.2*)
+          echo cmake.dir="${cmake[0]}" | tee -a local.properties
 
-# Start build
-cd "${FFMPEG_EXT_PATH}/jni"
-./build_ffmpeg.sh "${FFMPEG_EXT_PATH}" "${ANDROID_NDK_ROOT}" "linux-x86_64" "${ENABLED_DECODERS[@]}"
+      - name: Set JELLYFIN_VERSION
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: echo "JELLYFIN_VERSION=$(echo ${GITHUB_REF#refs/tags/v} | tr / -)" >> $GITHUB_ENV
+
+      # 【改回原版模块名】
+      - name: Build extension only (no publish)
+        run: ./gradlew :exoplayer-ffmpeg-extension:assembleRelease
+
+      - name: Upload compiled AAR package
+        uses: actions/upload-artifact@v4
+        with:
+          name: exoplayer-ffmpeg-extension-aar
+          path: exoplayer-ffmpeg-extension/build/outputs/aar/*.aar
