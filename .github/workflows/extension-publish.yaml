@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     environment: release
     # 【修改1】放宽执行条件：你自己的仓库推master也会触发构建，原条件仅原作者仓库/打标签才会执行
     if: ${{ !startsWith(github.ref, 'refs/pull/') }}
