@@ -48,34 +48,24 @@ jobs:
           cmake=(${ANDROID_SDK_ROOT}/cmake/3.10.2*)
           echo cmake.dir="${cmake[0]}" | tee -a local.properties
 
-      # 【关键】打印关键文件，看看到底哪里有问题
-      - name: Debug build files
-        run: |
-          echo "=== 1. exoplayer-ffmpeg-extension/build.gradle.kts ==="
-          cat exoplayer-ffmpeg-extension/build.gradle.kts || echo "FILE NOT FOUND"
-          echo ""
-          echo "=== 2. ExoPlayer 子模块是否存在 ==="
-          ls -la ExoPlayer/ | head -10 || echo "ExoPlayer DIR NOT FOUND"
-          echo ""
-          echo "=== 3. ExoPlayer/core_settings.gradle ==="
-          cat ExoPlayer/core_settings.gradle 2>/dev/null || echo "core_settings.gradle NOT FOUND"
-          echo ""
-          echo "=== 4. ExoPlayer/extensions/ffmpeg/build.gradle ==="
-          cat ExoPlayer/extensions/ffmpeg/build.gradle 2>/dev/null || echo "ffmpeg build.gradle NOT FOUND"
+      # 【关键】检查 local.properties 内容，确保路径正确
+      - name: Check local.properties
+        run: cat local.properties
 
       - name: Set JELLYFIN_VERSION
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: echo "JELLYFIN_VERSION=$(echo ${GITHUB_REF#refs/tags/v} | tr / -)" >> $GITHUB_ENV
 
-      # 【加 --stacktrace 显示完整错误】
+      # 【改这里】编译真正的 Android Library 模块！
       - name: Build extension only (no publish)
-        run: ./gradlew :exoplayer-ffmpeg-extension:assembleRelease --stacktrace
+        run: ./gradlew :exoplayer-extension-ffmpeg:assembleRelease --stacktrace
         env:
           OSSRH_USERNAME: dummy
           OSSRH_PASSWORD: dummy
 
+      # 【改这里】产物路径也对应真正的模块
       - name: Upload compiled AAR package
         uses: actions/upload-artifact@v4
         with:
           name: exoplayer-ffmpeg-extension-aar
-          path: exoplayer-ffmpeg-extension/build/outputs/aar/*.aar
+          path: ExoPlayer/extensions/ffmpeg/build/outputs/aar/*.aar
