@@ -40,30 +40,40 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/21.4.7075529" >> $GITHUB_ENV
 
+      # 【关键】先给 build.sh 加 set -e，防止静默失败
+      - name: Fix build.sh to fail on error
+        run: sed -i '1a\set -e' build.sh
+
       - name: Build ffmpeg
         run: ./build.sh
+
+      # 【关键】检查编译产物是否存在
+      - name: Check FFmpeg output
+        run: |
+          echo "=== 检查 android-libs ==="
+          find ExoPlayer/extensions/ffmpeg/src/main/jni/ffmpeg/android-libs -type f 2>/dev/null | head -20 || echo "NO FILES FOUND"
+          
+          echo "=== 检查 armeabi-v7a ==="
+          ls -la ExoPlayer/extensions/ffmpeg/src/main/jni/ffmpeg/android-libs/armeabi-v7a/ 2>/dev/null || echo "armeabi-v7a MISSING"
+          
+          echo "=== 检查 arm64-v8a ==="
+          ls -la ExoPlayer/extensions/ffmpeg/src/main/jni/ffmpeg/android-libs/arm64-v8a/ 2>/dev/null || echo "arm64-v8a MISSING"
 
       - name: Force specific version of cmake
         run: |
           cmake=(${ANDROID_SDK_ROOT}/cmake/3.10.2*)
           echo cmake.dir="${cmake[0]}" | tee -a local.properties
 
-      # 【关键】检查 local.properties 内容，确保路径正确
-      - name: Check local.properties
-        run: cat local.properties
-
       - name: Set JELLYFIN_VERSION
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: echo "JELLYFIN_VERSION=$(echo ${GITHUB_REF#refs/tags/v} | tr / -)" >> $GITHUB_ENV
 
-      # 【改这里】编译真正的 Android Library 模块！
       - name: Build extension only (no publish)
         run: ./gradlew :exoplayer-extension-ffmpeg:assembleRelease --stacktrace
         env:
           OSSRH_USERNAME: dummy
           OSSRH_PASSWORD: dummy
 
-      # 【改这里】产物路径也对应真正的模块
       - name: Upload compiled AAR package
         uses: actions/upload-artifact@v4
         with:
