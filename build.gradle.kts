@@ -22,14 +22,15 @@ allprojects {
     }
 }
 
-// Add Sonatype publishing repository
+// 【修改】只在有发布凭证时才配置
 nexusPublishing {
     repositories.sonatype {
         nexusUrl.set(uri("https://s01.oss.sonatype.org/service/local/"))
         snapshotRepositoryUrl.set(uri("https://s01.oss.sonatype.org/content/repositories/snapshots/"))
 
-        username.set(getProperty("ossrh.username"))
-        password.set(getProperty("ossrh.password"))
+        // 加 try-catch 或默认值，避免报错
+        username.set(project.findProperty("ossrh.username")?.toString() ?: "")
+        password.set(project.findProperty("ossrh.password")?.toString() ?: "")
     }
 
     useStaging.set(project.provider { project.version.toString() != SNAPSHOT_VERSION })
